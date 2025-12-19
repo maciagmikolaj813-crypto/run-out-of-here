@@ -9,29 +9,34 @@
         #menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; z-index: 100; border: 5px solid #0f0; margin: 10px; }
         .box { border: 1px solid #0f0; padding: 20px; width: 400px; background: #111; text-align: center; }
         #hud { position: fixed; top: 20px; left: 20px; z-index: 10; display: none; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #0f0; }
-        #room-id-hud { position: fixed; top: 20px; right: 20px; z-index: 10; color: #0f0; font-size: 18px; display: none; background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid #0f0; }
+        
+        /* NOWY ELEMENT HUD DLA KODU POKOJU */
+        #room-display { position: fixed; top: 20px; right: 20px; z-index: 10; display: none; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #0f0; color: #0f0; font-weight: bold; }
+        
         #prompt { position: fixed; bottom: 30%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #0f0; display: none; }
         #crosshair { position: fixed; top: 50%; left: 50%; width: 10px; height: 10px; border: 2px solid #0f0; transform: translate(-50%, -50%); border-radius: 50%; z-index: 5; display: none; }
         button { background: #0f0; color: #000; border: none; padding: 12px; font-weight: bold; cursor: pointer; width: 100%; margin: 5px 0; }
         button:hover { background: #0c0; }
-        #status { font-size: 12px; color: #555; margin-top: 10px; }
+        input { width: 100%; padding: 10px; margin: 5px 0; background: #000; color: #0f0; border: 1px solid #0f0; box-sizing: border-box; }
     </style>
 </head>
 <body>
     <div id="crosshair"></div>
     <div id="prompt">NACIŚNIJ [E]</div>
-    <div id="room-id-hud">KOD POKOJU: ---</div>
+    
+    <div id="room-display">KOD: <span id="room-id-text">---</span></div>
+
     <div id="menu">
         <h1>Run Out Of Here!</h1>
         <div class="box">
             <button onclick="createRoom(false)">STWÓRZ POKÓJ PUBLICZNY</button>
             <button onclick="createRoom(true)" style="background:#050;color:#0f0">STWÓRZ POKÓJ PRYWATNY</button>
             <div id="pub-list" style="max-height:120px; overflow-y:auto; margin:10px 0; font-size:11px; text-align: left; border-top: 1px dashed #0f0; padding-top:10px;">Szukanie gier...</div>
-            <input type="text" id="join-id" style="width:100%; padding:10px; margin:5px 0; background:#000; color:#0f0; border:1px solid #0f0;" placeholder="WPISZ KOD POKOJU">
+            <input type="text" id="join-id" placeholder="WPISZ KOD POKOJU">
             <button onclick="joinRoom(document.getElementById('join-id').value)" style="background:#0055ff; color:white;">DOŁĄCZ</button>
-            <div id="status">Status: Łączenie...</div>
         </div>
     </div>
+
     <div id="hud">
         <div id="lvl-txt" style="font-size:24px; color:#0f0;">LEVEL: 1</div>
         <div id="key-status" style="color:#f00;">KLUCZ: BRAK</div>
@@ -41,32 +46,28 @@
     <script type="module">
         import * as THREE from 'three';
 
-        const socket = io("https://run-out-of-here.onrender.com"); 
+        const socket = io("https://run-out-of-here.onrender.com");
 
         let scene, camera, renderer, currentId, hasKey = false;
         let yaw = 0, pitch = 0, lockers = [], others = {}, collidables = [], hazards = [];
         let level = 1, velocityY = 0, isGrounded = true, isCrouching = false;
         const keys = {};
 
-        socket.on('connect', () => { 
-            document.getElementById('status').innerText = "Status: Online"; 
-            document.getElementById('status').style.color = "#0f0"; 
-        });
-
         window.createRoom = (p) => socket.emit('create-room', p);
         window.joinRoom = (id) => socket.emit('join-room', id);
 
-        // Wyświetlanie kodu pokoju na HUDzie
+        // ODBIERANIE KODU OD SERWERA
         socket.on('room-created', (roomId) => {
-            const roomHud = document.getElementById('room-id-hud');
-            roomHud.innerText = "KOD POKOJU: " + roomId;
-            roomHud.style.display = 'block';
+            const display = document.getElementById('room-display');
+            const text = document.getElementById('room-id-text');
+            text.innerText = roomId;
+            display.style.display = 'block';
         });
 
         socket.on('list-update', (list) => {
             const div = document.getElementById('pub-list');
-            div.innerHTML = list.length ? '<b>DOSTĘPNE POKOJE:</b>' : 'BRAK GIER PUBLICZNYCH';
-            list.forEach(s => div.innerHTML += `<div>${s.id} (${s.count}) <button onclick="joinRoom('${s.id}')" style="width:auto;padding:2px">WEJDŹ</button></div>`);
+            div.innerHTML = list.length ? '<b>DOSTĘPNE POKOJE:</b>' : 'BRAK GIER';
+            list.forEach(s => div.innerHTML += `<div>${s.id} (${s.count}) <button onclick="joinRoom('${s.id}')" style="width:auto;padding:2px;margin-left:5px">WEJDŹ</button></div>`);
         });
 
         socket.on('joined', (data) => {
@@ -74,7 +75,6 @@
             document.getElementById('menu').style.display = 'none';
             document.getElementById('hud').style.display = 'block';
             document.getElementById('crosshair').style.display = 'block';
-            // Jeśli kod pokoju był wyświetlony, zostawiamy go na HUDzie, żeby gracz mógł go podać innym
             init();
         });
 
@@ -113,7 +113,7 @@
             document.getElementById('key-status').style.color = "#f00";
 
             const depth = 20 + (level * 10);
-            const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, depth), new THREE.MeshStandardMaterial({color: 0x111111}));
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, depth), new THREE.MeshStandardMaterial({color: 0x111}));
             floor.rotation.x = -Math.PI/2; floor.position.z = -depth/2 + 5;
             scene.add(floor);
 
@@ -126,9 +126,9 @@
 
             for(let i=0; i<(10 + level*2); i++) {
                 const group = new THREE.Group();
-                const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 1), new THREE.MeshStandardMaterial({color: 0x222222}));
+                const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 1), new THREE.MeshStandardMaterial({color: 0x222}));
                 group.add(body);
-                const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.3, 0.1), new THREE.MeshStandardMaterial({color: 0x000000}));
+                const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.3, 0.1), new THREE.MeshStandardMaterial({color: 0x000}));
                 door.position.set(0, 0, 0.51); door.userData = { index: i, opened: false };
                 group.add(door);
                 group.position.set(Math.random()*16-8, 1.25, -Math.random()*(depth-10));
@@ -184,7 +184,6 @@
             let targetHeight = isCrouching ? 0.8 : 1.6;
             const move = new THREE.Vector3();
             let speed = isCrouching ? 0.04 : 0.1;
-            
             if(keys['KeyW']) move.z -= speed; if(keys['KeyS']) move.z += speed;
             if(keys['KeyA']) move.x -= speed; if(keys['KeyD']) move.x += speed;
 
