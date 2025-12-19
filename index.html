@@ -9,6 +9,7 @@
         #menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; z-index: 100; border: 5px solid #0f0; margin: 10px; }
         .box { border: 1px solid #0f0; padding: 20px; width: 400px; background: #111; text-align: center; }
         #hud { position: fixed; top: 20px; left: 20px; z-index: 10; display: none; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #0f0; }
+        #room-id-hud { position: fixed; top: 20px; right: 20px; z-index: 10; color: #0f0; font-size: 18px; display: none; background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid #0f0; }
         #prompt { position: fixed; bottom: 30%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #0f0; display: none; }
         #crosshair { position: fixed; top: 50%; left: 50%; width: 10px; height: 10px; border: 2px solid #0f0; transform: translate(-50%, -50%); border-radius: 50%; z-index: 5; display: none; }
         button { background: #0f0; color: #000; border: none; padding: 12px; font-weight: bold; cursor: pointer; width: 100%; margin: 5px 0; }
@@ -19,12 +20,12 @@
 <body>
     <div id="crosshair"></div>
     <div id="prompt">NACIŚNIJ [E]</div>
+    <div id="room-id-hud">KOD POKOJU: ---</div>
     <div id="menu">
         <h1>Run Out Of Here!</h1>
         <div class="box">
             <button onclick="createRoom(false)">STWÓRZ POKÓJ PUBLICZNY</button>
             <button onclick="createRoom(true)" style="background:#050;color:#0f0">STWÓRZ POKÓJ PRYWATNY</button>
-            <div id="room-code-display" style="color:#0f0; font-weight:bold; margin:10px 0; font-size: 18px;"></div>
             <div id="pub-list" style="max-height:120px; overflow-y:auto; margin:10px 0; font-size:11px; text-align: left; border-top: 1px dashed #0f0; padding-top:10px;">Szukanie gier...</div>
             <input type="text" id="join-id" style="width:100%; padding:10px; margin:5px 0; background:#000; color:#0f0; border:1px solid #0f0;" placeholder="WPISZ KOD POKOJU">
             <button onclick="joinRoom(document.getElementById('join-id').value)" style="background:#0055ff; color:white;">DOŁĄCZ</button>
@@ -40,7 +41,6 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // POŁĄCZENIE Z RENDEREM
         const socket = io("https://run-out-of-here.onrender.com"); 
 
         let scene, camera, renderer, currentId, hasKey = false;
@@ -56,9 +56,11 @@
         window.createRoom = (p) => socket.emit('create-room', p);
         window.joinRoom = (id) => socket.emit('join-room', id);
 
-        // Wyświetlanie kodu pokoju po stworzeniu gry prywatnej
+        // Wyświetlanie kodu pokoju na HUDzie
         socket.on('room-created', (roomId) => {
-            document.getElementById('room-code-display').innerText = "KOD POKOJU: " + roomId;
+            const roomHud = document.getElementById('room-id-hud');
+            roomHud.innerText = "KOD POKOJU: " + roomId;
+            roomHud.style.display = 'block';
         });
 
         socket.on('list-update', (list) => {
@@ -72,6 +74,7 @@
             document.getElementById('menu').style.display = 'none';
             document.getElementById('hud').style.display = 'block';
             document.getElementById('crosshair').style.display = 'block';
+            // Jeśli kod pokoju był wyświetlony, zostawiamy go na HUDzie, żeby gracz mógł go podać innym
             init();
         });
 
@@ -110,13 +113,10 @@
             document.getElementById('key-status').style.color = "#f00";
 
             const depth = 20 + (level * 10);
-
-            // Podłoga i Sufit
             const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, depth), new THREE.MeshStandardMaterial({color: 0x111111}));
             floor.rotation.x = -Math.PI/2; floor.position.z = -depth/2 + 5;
             scene.add(floor);
 
-            // Lampy na suficie
             scene.add(new THREE.AmbientLight(0xffffff, 0.1));
             for(let z=0; z>-depth; z-=10) {
                 const pLight = new THREE.PointLight(0x00ff00, 10, 15);
@@ -124,7 +124,6 @@
                 scene.add(pLight);
             }
 
-            // Szafki z kolizją
             for(let i=0; i<(10 + level*2); i++) {
                 const group = new THREE.Group();
                 const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 1), new THREE.MeshStandardMaterial({color: 0x222222}));
@@ -138,7 +137,6 @@
                 collidables.push(body);
             }
 
-            // Przeszkody (Czerwone lasery)
             for(let i=0; i<level+2; i++) {
                 const laserGeo = new THREE.BoxGeometry(20, 0.1, 0.1);
                 const laserMat = new THREE.MeshBasicMaterial({color: 0xff0000});
@@ -149,7 +147,6 @@
                 hazards.push(laser);
             }
 
-            // Wyjście
             const exit = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 0.2), new THREE.MeshStandardMaterial({color: 0x0f0, emissive: 0x0f0}));
             exit.position.set(0, 2, -depth + 5);
             scene.add(exit);
@@ -197,7 +194,6 @@
             if(!checkCollision(new THREE.Vector3(nextPos.x, 1.6, camera.position.z))) camera.position.x = nextPos.x;
             if(!checkCollision(new THREE.Vector3(camera.position.x, 1.6, nextPos.z))) camera.position.z = nextPos.z;
 
-            // Grawitacja i kucanie
             if(!isGrounded) {
                 velocityY -= 0.008;
                 camera.position.y += velocityY;
@@ -210,7 +206,6 @@
                 camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetHeight, 0.1);
             }
 
-            // Kolizja z laserami
             const pBox = new THREE.Box3().setFromCenterAndSize(camera.position, new THREE.Vector3(0.4, isCrouching ? 0.4 : 1.2, 0.4));
             for(let h of hazards) {
                 if(pBox.intersectsBox(new THREE.Box3().setFromObject(h))) {
