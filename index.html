@@ -11,8 +11,9 @@
         #hud { position: fixed; top: 20px; left: 20px; z-index: 10; display: none; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #0f0; }
         #prompt { position: fixed; bottom: 30%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #0f0; display: none; }
         #crosshair { position: fixed; top: 50%; left: 50%; width: 10px; height: 10px; border: 2px solid #0f0; transform: translate(-50%, -50%); border-radius: 50%; z-index: 5; display: none; }
-        #status { font-size: 10px; color: #555; margin-top: 10px; }
+        #status { font-size: 12px; color: #555; margin-top: 10px; }
         button { background: #0f0; color: #000; border: none; padding: 12px; font-weight: bold; cursor: pointer; width: 100%; margin: 5px 0; }
+        button:hover { background: #0c0; }
         input { width: 100%; padding: 10px; margin: 5px 0; background: #000; color: #0f0; border: 1px solid #0f0; box-sizing: border-box; }
     </style>
 </head>
@@ -24,12 +25,14 @@
     <div id="menu">
         <h1>Run Out Of Here! INDEV</h1>
         <div class="box">
-            <button onclick="createRoom(false)">STWÓRZ PUBLICZNY</button>
-            <button onclick="createRoom(true)" style="background:#050;color:#0f0">STWÓRZ PRYWATNY</button>
-            <div id="pub-list" style="max-height:120px; overflow-y:auto; margin:10px 0; font-size:12px; text-align: left;">Czekanie na serwer...</div>
-            <input type="text" id="join-id" placeholder="KOD POKOJU">
-            <button onclick="joinRoom(document.getElementById('join-id').value)" style="background:#0055ff; color:white;">DOŁĄCZ</button>
-            <div id="status">Status: Łączenie...</div>
+            <button onclick="createRoom(false)">STWÓRZ POKÓJ PUBLICZNY</button>
+            <button onclick="createRoom(true)" style="background:#050;color:#0f0">STWÓRZ POKÓJ PRYWATNY</button>
+            <div id="pub-list" style="max-height:120px; overflow-y:auto; margin:10px 0; font-size:12px; text-align: left; border-top: 1px dashed #0f0; padding-top:10px;">
+                Szukanie aktywnych gier...
+            </div>
+            <input type="text" id="join-id" placeholder="WPISZ KOD POKOJU">
+            <button onclick="joinRoom(document.getElementById('join-id').value)" style="background:#0055ff; color:white;">DOŁĄCZ DO GRY</button>
+            <div id="status">Status połączenia: Łączenie z serwerem...</div>
         </div>
     </div>
 
@@ -43,25 +46,32 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // JEŚLI WRZUCASZ NA GLITCH, WPISZ ADRES W IO("https://...")
-        const socket = io(); 
+        // TWÓJ LINK Z RAILWAY:
+        const socket = io("https://run-out-of-here-production.up.railway.app"); 
         
         let scene, camera, renderer, currentId, hasKey = false, keyLockerIndex = -1;
         let yaw = 0, pitch = 0, lockers = [], others = {}, collidables = [], obstacles = [];
         let level = 1, velocityY = 0, isGrounded = true, isCrouching = false;
         const keys = {};
 
-        socket.on('connect', () => document.getElementById('status').innerText = "Status: Online");
-        socket.on('connect_error', () => document.getElementById('status').innerText = "Status: Budzenie serwera...");
+        socket.on('connect', () => {
+            document.getElementById('status').innerText = "Status: Online (Połączono)";
+            document.getElementById('status').style.color = "#0f0";
+        });
+
+        socket.on('connect_error', () => {
+            document.getElementById('status').innerText = "Status: Budzenie serwera (czekaj...)";
+            document.getElementById('status').style.color = "#f00";
+        });
 
         window.createRoom = (p) => socket.emit('create-room', p);
         window.joinRoom = (id) => socket.emit('join-room', id);
 
         socket.on('list-update', (list) => {
             const div = document.getElementById('pub-list');
-            div.innerHTML = list.length ? '<b>LISTA GIER:</b>' : 'BRAK GIER PUBLICZNYCH';
+            div.innerHTML = list.length ? '<b>DOSTĘPNE POKOJE:</b>' : 'BRAK GIER PUBLICZNYCH';
             list.forEach(s => {
-                div.innerHTML += `<div>${s.id} (${s.count}p) <button onclick="joinRoom('${s.id}')" style="width:auto; padding:2px 5px; margin-left:10px;">DOŁĄCZ</button></div>`;
+                div.innerHTML += `<div style="margin:5px 0;">${s.id} (${s.count} graczy) <button onclick="joinRoom('${s.id}')" style="width:auto; padding:2px 8px; margin-left:10px;">WEJDŹ</button></div>`;
             });
         });
 
@@ -76,13 +86,18 @@
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x111111);
+            scene.background = new THREE.Color(0x050505);
             camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            document.addEventListener('click', () => document.body.requestPointerLock());
+            document.addEventListener('click', () => {
+                if(document.getElementById('menu').style.display === 'none') {
+                    document.body.requestPointerLock();
+                }
+            });
+
             document.addEventListener('mousemove', (e) => {
                 if(document.pointerLockElement === document.body) {
                     yaw -= e.movementX * 0.002;
@@ -111,18 +126,18 @@
             floor.position.z = -depth/2 + 5;
             scene.add(floor);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
             for(let z=0; z>-depth; z-=10) {
-                let light = new THREE.PointLight(0x00ff00, 15, 12);
+                let light = new THREE.PointLight(0x00ff00, 10, 15);
                 light.position.set(0, 3, z);
                 scene.add(light);
             }
 
             for(let i=0; i< (10 + level * 2); i++) {
                 const group = new THREE.Group();
-                const body = new THREE.Mesh(new THREE.BoxGeometry(1, 2.2, 0.8), new THREE.MeshStandardMaterial({color: 0x444444}));
+                const body = new THREE.Mesh(new THREE.BoxGeometry(1, 2.2, 0.8), new THREE.MeshStandardMaterial({color: 0x333333}));
                 group.add(body);
-                const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.1, 0.1), new THREE.MeshStandardMaterial({color: 0x222222}));
+                const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.1, 0.1), new THREE.MeshStandardMaterial({color: 0x111111}));
                 door.position.set(0, 0, 0.45);
                 door.userData = { index: i, opened: false };
                 group.add(door);
@@ -134,7 +149,7 @@
 
             if(level > 1) {
                 for(let i=0; i<level; i++) {
-                    const laser = new THREE.Mesh(new THREE.BoxGeometry(10, 0.1, 0.1), new THREE.MeshBasicMaterial({color: 0xff0000}));
+                    const laser = new THREE.Mesh(new THREE.BoxGeometry(10, 0.05, 0.05), new THREE.MeshBasicMaterial({color: 0xff0000}));
                     laser.position.set(Math.random()*10-5, 0.5 + Math.random()*1.5, -Math.random()*(depth-5));
                     scene.add(laser);
                     obstacles.push(laser);
@@ -164,8 +179,8 @@
             requestAnimationFrame(animate);
             isCrouching = keys['ControlLeft'] || keys['ControlRight'];
             let targetH = isCrouching ? 0.8 : 1.6;
-            camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetH + (isGrounded ? 0 : velocityY), 0.2);
-
+            
+            // Prosty ruch
             const move = new THREE.Vector3();
             let speed = isCrouching ? 0.05 : 0.12;
             if(keys['KeyW']) move.z -= speed; if(keys['KeyS']) move.z += speed;
@@ -175,24 +190,32 @@
             const nextP = camera.position.clone().add(move);
             let hit = false;
             collidables.forEach(c => { if(new THREE.Vector2(nextP.x, nextP.z).distanceTo(new THREE.Vector2(c.position.x, c.position.z)) < 1.1) hit = true; });
-            if(Math.abs(nextP.x) > 9.5 || nextP.z > 9.5) hit = true;
+            if(Math.abs(nextP.x) > 9.5) hit = true;
+            
             if(!hit) { camera.position.x = nextP.x; camera.position.z = nextP.z; }
 
+            // Grawitacja i skok
             if(!isGrounded) {
                 velocityY -= 0.005;
                 camera.position.y += velocityY;
                 if(camera.position.y <= targetH) { camera.position.y = targetH; velocityY = 0; isGrounded = true; }
+            } else {
+                camera.position.y = targetH;
             }
 
+            // Kolizja z laserami
             obstacles.forEach(o => { if(camera.position.distanceTo(o.position) < 0.7) camera.position.set(0, 1.6, 5); });
+            
             camera.rotation.set(pitch, yaw, 0, 'YXZ');
 
+            // Wyjście
             const depth = 20 + (level * 10);
             if(hasKey && camera.position.z < (-depth + 7)) {
                 socket.emit('win', currentId);
                 hasKey = false;
             }
 
+            // Celownik/Prompt
             const ray = new THREE.Raycaster();
             ray.setFromCamera(new THREE.Vector2(0,0), camera);
             const hits = ray.intersectObjects(lockers);
@@ -229,6 +252,12 @@
 
         socket.on('p-left', (id) => {
             if(others[id]) { scene.remove(others[id]); delete others[id]; }
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         });
     </script>
 </body>
