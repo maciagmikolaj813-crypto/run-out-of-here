@@ -13,6 +13,7 @@
         #crosshair { position: fixed; top: 50%; left: 50%; width: 10px; height: 10px; border: 2px solid #0f0; transform: translate(-50%, -50%); border-radius: 50%; z-index: 5; display: none; }
         button { background: #0f0; color: #000; border: none; padding: 12px; font-weight: bold; cursor: pointer; width: 100%; margin: 5px 0; }
         button:hover { background: #0c0; }
+        #status { font-size: 12px; color: #555; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -23,9 +24,11 @@
         <div class="box">
             <button onclick="createRoom(false)">STWÓRZ POKÓJ PUBLICZNY</button>
             <button onclick="createRoom(true)" style="background:#050;color:#0f0">STWÓRZ POKÓJ PRYWATNY</button>
+            <div id="room-code-display" style="color:#0f0; font-weight:bold; margin:10px 0; font-size: 18px;"></div>
             <div id="pub-list" style="max-height:120px; overflow-y:auto; margin:10px 0; font-size:11px; text-align: left; border-top: 1px dashed #0f0; padding-top:10px;">Szukanie gier...</div>
-            <input type="text" id="join-id" style="width:100%; padding:10px; margin:5px 0; background:#000; color:#0f0; border:1px solid #0f0;" placeholder="KOD POKOJU">
+            <input type="text" id="join-id" style="width:100%; padding:10px; margin:5px 0; background:#000; color:#0f0; border:1px solid #0f0;" placeholder="WPISZ KOD POKOJU">
             <button onclick="joinRoom(document.getElementById('join-id').value)" style="background:#0055ff; color:white;">DOŁĄCZ</button>
+            <div id="status">Status: Łączenie...</div>
         </div>
     </div>
     <div id="hud">
@@ -37,6 +40,7 @@
     <script type="module">
         import * as THREE from 'three';
 
+        // POŁĄCZENIE Z RENDEREM
         const socket = io("https://run-out-of-here.onrender.com"); 
 
         let scene, camera, renderer, currentId, hasKey = false;
@@ -44,13 +48,23 @@
         let level = 1, velocityY = 0, isGrounded = true, isCrouching = false;
         const keys = {};
 
+        socket.on('connect', () => { 
+            document.getElementById('status').innerText = "Status: Online"; 
+            document.getElementById('status').style.color = "#0f0"; 
+        });
+
         window.createRoom = (p) => socket.emit('create-room', p);
         window.joinRoom = (id) => socket.emit('join-room', id);
 
+        // Wyświetlanie kodu pokoju po stworzeniu gry prywatnej
+        socket.on('room-created', (roomId) => {
+            document.getElementById('room-code-display').innerText = "KOD POKOJU: " + roomId;
+        });
+
         socket.on('list-update', (list) => {
             const div = document.getElementById('pub-list');
-            div.innerHTML = list.length ? '<b>DOSTĘPNE POKOJE:</b>' : 'BRAK GIER';
-            list.forEach(s => div.innerHTML += `<div>${s.id} (${s.count}) <button onclick="joinRoom('${s.id}')">WEJDŹ</button></div>`);
+            div.innerHTML = list.length ? '<b>DOSTĘPNE POKOJE:</b>' : 'BRAK GIER PUBLICZNYCH';
+            list.forEach(s => div.innerHTML += `<div>${s.id} (${s.count}) <button onclick="joinRoom('${s.id}')" style="width:auto;padding:2px">WEJDŹ</button></div>`);
         });
 
         socket.on('joined', (data) => {
@@ -97,12 +111,12 @@
 
             const depth = 20 + (level * 10);
 
-            // Podłoga/Sufit
-            const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, depth), new THREE.MeshStandardMaterial({color: 0x111}));
+            // Podłoga i Sufit
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, depth), new THREE.MeshStandardMaterial({color: 0x111111}));
             floor.rotation.x = -Math.PI/2; floor.position.z = -depth/2 + 5;
             scene.add(floor);
 
-            // Lampy
+            // Lampy na suficie
             scene.add(new THREE.AmbientLight(0xffffff, 0.1));
             for(let z=0; z>-depth; z-=10) {
                 const pLight = new THREE.PointLight(0x00ff00, 10, 15);
@@ -110,12 +124,12 @@
                 scene.add(pLight);
             }
 
-            // Szafki
+            // Szafki z kolizją
             for(let i=0; i<(10 + level*2); i++) {
                 const group = new THREE.Group();
-                const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 1), new THREE.MeshStandardMaterial({color: 0x222}));
+                const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 1), new THREE.MeshStandardMaterial({color: 0x222222}));
                 group.add(body);
-                const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.3, 0.1), new THREE.MeshStandardMaterial({color: 0x000}));
+                const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.3, 0.1), new THREE.MeshStandardMaterial({color: 0x000000}));
                 door.position.set(0, 0, 0.51); door.userData = { index: i, opened: false };
                 group.add(door);
                 group.position.set(Math.random()*16-8, 1.25, -Math.random()*(depth-10));
@@ -124,12 +138,11 @@
                 collidables.push(body);
             }
 
-            // PRZESZKODY (Lasery)
+            // Przeszkody (Czerwone lasery)
             for(let i=0; i<level+2; i++) {
                 const laserGeo = new THREE.BoxGeometry(20, 0.1, 0.1);
                 const laserMat = new THREE.MeshBasicMaterial({color: 0xff0000});
                 const laser = new THREE.Mesh(laserGeo, laserMat);
-                // Niektóre lasery są nisko (do przeskoczenia), niektóre wysoko (do kucnięcia)
                 const h = Math.random() > 0.5 ? 0.5 : 1.2; 
                 laser.position.set(0, h, -Math.random()*(depth-10));
                 scene.add(laser);
@@ -171,12 +184,10 @@
         function animate() {
             requestAnimationFrame(animate);
             
-            // Fizyka Skoku i Kucania
             let targetHeight = isCrouching ? 0.8 : 1.6;
-            let currentHeight = camera.position.y;
-
             const move = new THREE.Vector3();
             let speed = isCrouching ? 0.04 : 0.1;
+            
             if(keys['KeyW']) move.z -= speed; if(keys['KeyS']) move.z += speed;
             if(keys['KeyA']) move.x -= speed; if(keys['KeyD']) move.x += speed;
 
@@ -186,7 +197,7 @@
             if(!checkCollision(new THREE.Vector3(nextPos.x, 1.6, camera.position.z))) camera.position.x = nextPos.x;
             if(!checkCollision(new THREE.Vector3(camera.position.x, 1.6, nextPos.z))) camera.position.z = nextPos.z;
 
-            // Grawitacja
+            // Grawitacja i kucanie
             if(!isGrounded) {
                 velocityY -= 0.008;
                 camera.position.y += velocityY;
@@ -199,17 +210,16 @@
                 camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetHeight, 0.1);
             }
 
-            // Kolizja z Hazardami (Lasery)
+            // Kolizja z laserami
             const pBox = new THREE.Box3().setFromCenterAndSize(camera.position, new THREE.Vector3(0.4, isCrouching ? 0.4 : 1.2, 0.4));
             for(let h of hazards) {
                 if(pBox.intersectsBox(new THREE.Box3().setFromObject(h))) {
-                    camera.position.set(0, 1.6, 5); // Reset na start
+                    camera.position.set(0, 1.6, 5); 
                 }
             }
 
             camera.rotation.set(pitch, yaw, 0, 'YXZ');
             
-            // HUD i Win
             const depth = 20 + (level * 10);
             if(hasKey && camera.position.z < (-depth + 6)) { socket.emit('win', currentId); hasKey = false; }
 
