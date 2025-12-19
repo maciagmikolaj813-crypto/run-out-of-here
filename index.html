@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Run Out Of Here! INDEV</title>
+    <title>Run Out Of Here! - MULTIPLAYER VERSION</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Consolas', monospace; color: #fff; }
@@ -11,7 +11,6 @@
         #hud { position: fixed; top: 20px; left: 20px; z-index: 10; display: none; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #0f0; }
         #prompt { position: fixed; bottom: 30%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #0f0; display: none; }
         #crosshair { position: fixed; top: 50%; left: 50%; width: 10px; height: 10px; border: 2px solid #0f0; transform: translate(-50%, -50%); border-radius: 50%; z-index: 5; display: none; }
-        #status { font-size: 12px; color: #555; margin-top: 10px; }
         button { background: #0f0; color: #000; border: none; padding: 12px; font-weight: bold; cursor: pointer; width: 100%; margin: 5px 0; }
         button:hover { background: #0c0; }
         input { width: 100%; padding: 10px; margin: 5px 0; background: #000; color: #0f0; border: 1px solid #0f0; box-sizing: border-box; }
@@ -21,14 +20,13 @@
     <div id="crosshair"></div>
     <div id="prompt">NACIŚNIJ [E]</div>
     <div id="menu">
-        <h1>Run Out Of Here! INDEV</h1>
+        <h1>Run Out Of Here!</h1>
         <div class="box">
             <button onclick="createRoom(false)">STWÓRZ POKÓJ PUBLICZNY</button>
             <button onclick="createRoom(true)" style="background:#050;color:#0f0">STWÓRZ POKÓJ PRYWATNY</button>
             <div id="pub-list" style="max-height:120px; overflow-y:auto; margin:10px 0; font-size:11px; text-align: left; border-top: 1px dashed #0f0; padding-top:10px;">Szukanie gier...</div>
             <input type="text" id="join-id" placeholder="KOD POKOJU">
             <button onclick="joinRoom(document.getElementById('join-id').value)" style="background:#0055ff; color:white;">DOŁĄCZ</button>
-            <div id="status">Status: Łączenie z Renderem...</div>
         </div>
     </div>
     <div id="hud">
@@ -40,31 +38,20 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // TWOJE POŁĄCZENIE Z RENDEREM:
         const socket = io("https://run-out-of-here.onrender.com"); 
 
         let scene, camera, renderer, currentId, hasKey = false;
-        let yaw = 0, pitch = 0, lockers = [], others = {}, collidables = [], obstacles = [];
-        let level = 1, velocityY = 0, isGrounded = true, isCrouching = false;
+        let yaw = 0, pitch = 0, lockers = [], others = {}, collidables = [];
+        let level = 1, velocityY = 0, isGrounded = true;
         const keys = {};
-
-        socket.on('connect', () => { 
-            document.getElementById('status').innerText = "Status: Online (Połączono)"; 
-            document.getElementById('status').style.color = "#0f0"; 
-        });
-
-        socket.on('connect_error', () => {
-            document.getElementById('status').innerText = "Status: Budzenie serwera...";
-            document.getElementById('status').style.color = "#f00";
-        });
 
         window.createRoom = (p) => socket.emit('create-room', p);
         window.joinRoom = (id) => socket.emit('join-room', id);
 
         socket.on('list-update', (list) => {
             const div = document.getElementById('pub-list');
-            div.innerHTML = list.length ? '<b>POKOJE:</b>' : 'BRAK GIER';
-            list.forEach(s => div.innerHTML += `<div>${s.id} (${s.count}) <button onclick="joinRoom('${s.id}')" style="width:auto;padding:2px">WEJDŹ</button></div>`);
+            div.innerHTML = list.length ? '<b>DOSTĘPNE POKOJE:</b>' : 'BRAK GIER PUBLICZNYCH';
+            list.forEach(s => div.innerHTML += `<div>${s.id} (${s.count} graczy) <button onclick="joinRoom('${s.id}')" style="width:auto;padding:2px">WEJDŹ</button></div>`);
         });
 
         socket.on('joined', (data) => {
@@ -77,8 +64,11 @@
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x050505);
+            scene.background = new THREE.Color(0x020202);
+            scene.fog = new THREE.FogExp2(0x020202, 0.15); // Mgła dla klimatu
+
             camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+            
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
@@ -86,59 +76,142 @@
             document.addEventListener('click', () => document.body.requestPointerLock());
             document.addEventListener('mousemove', (e) => {
                 if(document.pointerLockElement === document.body) {
-                    yaw -= e.movementX * 0.002; pitch -= e.movementY * 0.002;
+                    yaw -= e.movementX * 0.002;
+                    pitch -= e.movementY * 0.002;
                     pitch = Math.max(-1.5, Math.min(1.5, pitch));
                 }
             });
-            generateLevel(); animate();
+
+            generateLevel();
+            animate();
         }
 
         function generateLevel() {
-            lockers.forEach(l => scene.remove(l.parent)); collidables.forEach(c => scene.remove(c));
-            obstacles.forEach(o => scene.remove(o)); lockers = []; collidables = []; obstacles = [];
-            hasKey = false; camera.position.set(0, 1.6, 5);
-            document.getElementById('key-status').innerText = "KLUCZ: BRAK"; document.getElementById('key-status').style.color = "#f00";
+            // Czyszczenie
+            lockers.forEach(l => scene.remove(l.parent));
+            collidables.forEach(c => scene.remove(c));
+            lockers = []; collidables = [];
+            
+            hasKey = false;
+            camera.position.set(0, 1.6, 5);
+            document.getElementById('key-status').innerText = "KLUCZ: BRAK";
+            document.getElementById('key-status').style.color = "#f00";
 
             const depth = 20 + (level * 10);
-            const floor = new THREE.Mesh(new THREE.PlaneGeometry(20, depth), new THREE.MeshStandardMaterial({color: 0x111}));
-            floor.rotation.x = -Math.PI/2; floor.position.z = -depth/2 + 5; scene.add(floor);
-            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-            for(let i=0; i<(10 + level*2); i++) {
-                const group = new THREE.Group();
-                const body = new THREE.Mesh(new THREE.BoxGeometry(1, 2.2, 0.8), new THREE.MeshStandardMaterial({color: 0x333}));
-                group.add(body);
-                const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.1, 0.1), new THREE.MeshStandardMaterial({color: 0x111}));
-                door.position.set(0, 0, 0.45); door.userData = { index: i, opened: false };
-                group.add(door); group.position.set(Math.random()*16-8, 1.1, -Math.random()*(depth-8));
-                scene.add(group); lockers.push(door); collidables.push(body);
+            // Podłoga i Sufit
+            const floorGeo = new THREE.PlaneGeometry(20, depth);
+            const floorMat = new THREE.MeshStandardMaterial({color: 0x111111});
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI/2;
+            floor.position.z = -depth/2 + 5;
+            scene.add(floor);
+
+            const ceiling = new THREE.Mesh(floorGeo, new THREE.MeshStandardMaterial({color: 0x050505}));
+            ceiling.rotation.x = Math.PI/2;
+            ceiling.position.y = 4;
+            ceiling.position.z = -depth/2 + 5;
+            scene.add(ceiling);
+
+            // Oświetlenie (LAMPY NA SUFICIE)
+            scene.add(new THREE.AmbientLight(0xffffff, 0.1));
+            for(let z=0; z>-depth; z-=8) {
+                // Obudowa lampy
+                const lampBox = new THREE.Mesh(new THREE.BoxGeometry(1, 0.1, 0.3), new THREE.MeshBasicMaterial({color: 0x22ff22}));
+                lampBox.position.set(0, 3.9, z);
+                scene.add(lampBox);
+
+                // Światło punktowe
+                const pLight = new THREE.PointLight(0x00ff00, 8, 12);
+                pLight.position.set(0, 3.8, z);
+                scene.add(pLight);
             }
-            const exit = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 0.2), new THREE.MeshStandardMaterial({color: 0x0f0, wireframe: true}));
-            exit.position.set(0, 2, -depth + 5); scene.add(exit);
+
+            // Szafki (Z kolizją)
+            for(let i=0; i<(12 + level*2); i++) {
+                const group = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.BoxGeometry(1, 2.5, 0.8), new THREE.MeshStandardMaterial({color: 0x222222}));
+                group.add(body);
+                
+                const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.3, 0.1), new THREE.MeshStandardMaterial({color: 0x000000}));
+                door.position.set(0, 0, 0.45);
+                door.userData = { index: i, opened: false };
+                group.add(door);
+
+                group.position.set(Math.random()*16-8, 1.25, -Math.random()*(depth-10));
+                scene.add(group);
+                lockers.push(door);
+                collidables.push(body); // Dodajemy do listy kolizji
+            }
+
+            // Ściany boczne (Niewidzialne, by nie wypaść)
+            const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(1, 10, depth), new THREE.MeshBasicMaterial({visible: false}));
+            wallLeft.position.set(-10.5, 0, -depth/2 + 5);
+            collidables.push(wallLeft);
+            const wallRight = new THREE.Mesh(new THREE.BoxGeometry(1, 10, depth), new THREE.MeshBasicMaterial({visible: false}));
+            wallRight.position.set(10.5, 0, -depth/2 + 5);
+            collidables.push(wallRight);
+
+            // Wyjście
+            const exit = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 0.2), new THREE.MeshStandardMaterial({color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 2}));
+            exit.position.set(0, 2, -depth + 5);
+            scene.add(exit);
+        }
+
+        function checkCollision(nextPos) {
+            const playerRadius = 0.5;
+            for(let obj of collidables) {
+                const box = new THREE.Box3().setFromObject(obj);
+                // Powiększamy box o promień gracza
+                box.min.x -= playerRadius; box.max.x += playerRadius;
+                box.min.z -= playerRadius; box.max.z += playerRadius;
+                if(box.containsPoint(nextPos)) return true;
+            }
+            return false;
         }
 
         window.onkeydown = (e) => {
             keys[e.code] = true;
             if(e.code === 'KeyE') {
-                const ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2(0,0), camera);
+                const ray = new THREE.Raycaster();
+                ray.setFromCamera(new THREE.Vector2(0,0), camera);
                 const hits = ray.intersectObjects(lockers);
-                if(hits.length > 0 && hits[0].distance < 3) socket.emit('locker-opened', { roomId: currentId, index: hits[0].object.userData.index });
+                if(hits.length > 0 && hits[0].distance < 3) {
+                    socket.emit('locker-opened', { roomId: currentId, index: hits[0].object.userData.index });
+                }
             }
         };
         window.onkeyup = (e) => keys[e.code] = false;
 
         function animate() {
             requestAnimationFrame(animate);
-            let speed = keys['ShiftLeft'] ? 0.18 : 0.1;
+            
             const move = new THREE.Vector3();
-            if(keys['KeyW']) move.z -= speed; if(keys['KeyS']) move.z += speed;
-            if(keys['KeyA']) move.x -= speed; if(keys['KeyD']) move.x += speed;
+            let speed = keys['ShiftLeft'] ? 0.15 : 0.08;
+            
+            if(keys['KeyW']) move.z -= speed;
+            if(keys['KeyS']) move.z += speed;
+            if(keys['KeyA']) move.x -= speed;
+            if(keys['KeyD']) move.x += speed;
+
             move.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yaw));
-            camera.position.add(move);
+            
+            // Próba ruchu X
+            const nextX = camera.position.clone().add(new THREE.Vector3(move.x, 0, 0));
+            if(!checkCollision(nextX)) camera.position.x = nextX.x;
+            
+            // Próba ruchu Z
+            const nextZ = camera.position.clone().add(new THREE.Vector3(0, 0, move.z));
+            if(!checkCollision(nextZ)) camera.position.z = nextZ.z;
+
             camera.rotation.set(pitch, yaw, 0, 'YXZ');
 
+            // Wyjście z poziomu
             const depth = 20 + (level * 10);
-            if(hasKey && camera.position.z < (-depth + 7)) { socket.emit('win', currentId); hasKey = false; }
+            if(hasKey && camera.position.z < (-depth + 6)) {
+                socket.emit('win', currentId);
+                hasKey = false;
+            }
 
             renderer.render(scene, camera);
             if(currentId) socket.emit('move', {roomId: currentId, pos: camera.position.toArray(), rot: yaw});
@@ -146,17 +219,40 @@
 
         socket.on('locker-state', (d) => {
             const door = lockers.find(l => l.userData.index === d.index);
-            if(door) { door.rotation.y = Math.PI/2; door.position.x = 0.5; }
+            if(door) { 
+                door.rotation.y = Math.PI/1.5; 
+                door.position.x = 0.4;
+            }
         });
-        socket.on('key-found', () => { hasKey = true; document.getElementById('key-status').innerText = "KLUCZ: OK!"; document.getElementById('key-status').style.color = "#0f0"; });
-        socket.on('next-lvl', (d) => { level = d.level; document.getElementById('lvl-txt').innerText = "LEVEL: " + level; generateLevel(); });
+
+        socket.on('key-found', () => {
+            hasKey = true;
+            document.getElementById('key-status').innerText = "KLUCZ: ZNALEZIONY!";
+            document.getElementById('key-status').style.color = "#0f0";
+        });
+
+        socket.on('next-lvl', (d) => {
+            level = d.level;
+            document.getElementById('lvl-txt').innerText = "LEVEL: " + level;
+            generateLevel();
+        });
+
         socket.on('p-moved', (d) => {
-            if(!others[d.id]) { 
-                others[d.id] = new THREE.Mesh(new THREE.CapsuleGeometry(0.3, 1), new THREE.MeshBasicMaterial({color: 0xf00})); 
-                scene.add(others[d.id]); 
+            if(!others[d.id]) {
+                const group = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1), new THREE.MeshBasicMaterial({color: 0xff0000}));
+                const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                head.position.y = 0.8;
+                group.add(body); group.add(head);
+                scene.add(group);
+                others[d.id] = group;
             }
             others[d.id].position.set(d.pos[0], d.pos[1]-0.5, d.pos[2]);
             others[d.id].rotation.y = d.rot;
+        });
+
+        socket.on('p-left', (id) => {
+            if(others[id]) { scene.remove(others[id]); delete others[id]; }
         });
     </script>
 </body>
