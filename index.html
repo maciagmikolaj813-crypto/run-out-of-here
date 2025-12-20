@@ -2,36 +2,43 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Run Out Of Here! - INDEV 2026 HARDCORE</title>
+    <title>Run Out Of Here! - INFINITE INDEV</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Consolas', monospace; color: #fff; }
         #menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; z-index: 100; border: 5px solid #fff; margin: 10px; }
-        .box { border: 1px solid #fff; padding: 20px; width: 400px; background: #111; text-align: center; }
+        .box { border: 1px solid #fff; padding: 20px; width: 450px; background: #111; text-align: center; }
         #hud { position: fixed; top: 20px; left: 20px; z-index: 10; display: none; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #fff; }
-        #prompt { position: fixed; bottom: 30%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #fff; display: none; text-shadow: 2px 2px #000; }
+        #prompt { position: fixed; bottom: 30%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #fff; display: none; }
         #crosshair { position: fixed; top: 50%; left: 50%; width: 6px; height: 6px; background: #fff; transform: translate(-50%, -50%); border-radius: 50%; z-index: 5; display: none; }
-        button { background: #fff; color: #000; border: none; padding: 12px; font-weight: bold; cursor: pointer; width: 100%; margin: 5px 0; }
+        button { background: #fff; color: #000; border: none; padding: 10px; font-weight: bold; cursor: pointer; width: 100%; margin: 5px 0; transition: 0.2s; }
+        button:hover { background: #ccc; }
+        #pub-list { max-height: 150px; overflow-y: auto; margin: 15px 0; text-align: left; background: #000; padding: 5px; border: 1px dashed #555; }
+        .server-item { display: flex; justify-content: space-between; padding: 5px; border-bottom: 1px solid #333; font-size: 12px; }
+        input { width: 100%; padding: 10px; margin: 5px 0; background: #000; color: #fff; border: 1px solid #fff; box-sizing: border-box; }
     </style>
 </head>
 <body>
     <div id="crosshair"></div>
-    <div id="prompt">INTERAKCJA [E]</div>
+    <div id="prompt">NACIŚNIJ [E]</div>
+    
     <div id="menu">
-        <h1>Run Out Of Here! <small>Indev 2026</small></h1>
+        <h1>Run Out Of Here! <small>Infinite 2026</small></h1>
         <div class="box">
-            <button onclick="createRoom(false)">NOWA GRA PUBLICZNA</button>
-            <button onclick="createRoom(true)">STWÓRZ POKÓJ PRYWATNY</button>
-            <div id="pub-list"></div>
-            <input type="text" id="join-id" style="width:100%; padding:10px; margin:5px 0; background:#000; color:#fff; border:1px solid #fff;" placeholder="KOD POKOJU">
-            <button onclick="joinRoom(document.getElementById('join-id').value)" style="background:#0055ff; color:white;">DOŁĄCZ</button>
+            <button onclick="createRoom(false)">STWÓRZ SERWER PUBLICZNY</button>
+            <button onclick="createRoom(true)" style="background:#333; color:#fff">STWÓRZ PRYWATNY</button>
+            
+            <div id="pub-list">Szukanie aktywnych serwerów...</div>
+            
+            <input type="text" id="join-id" placeholder="WPISZ KOD PRYWATNY">
+            <button onclick="joinRoom(document.getElementById('join-id').value)" style="background:#0055ff; color:white;">DOŁĄCZ DO KODU</button>
         </div>
     </div>
     
     <div id="hud">
-        <div id="lvl-txt" style="font-size:20px; color:#fff;">POZIOM: 1</div>
-        <div id="key-status" style="color:#ff0000; font-weight:bold;">KLUCZ: NIEODNALEZIONY</div>
-        <div id="room-id-display" style="color:#888; font-size:12px; margin-top:5px; display:none;">KOD: <span id="room-code-val"></span></div>
+        <div id="lvl-txt" style="font-size:22px; color:#fff;">POZIOM: 1</div>
+        <div id="key-status" style="color:#ff0000;">KLUCZ: BRAK</div>
+        <div id="room-id-display" style="color:#888; font-size:12px; margin-top:5px; display:none;">SESJA: <span id="room-code-val"></span></div>
     </div>
 
     <script type="importmap"> { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } } </script>
@@ -47,6 +54,23 @@
 
         window.createRoom = (p) => socket.emit('create-room', p);
         window.joinRoom = (id) => socket.emit('join-room', id);
+
+        // LISTA SERWERÓW
+        socket.on('list-update', (list) => {
+            const listDiv = document.getElementById('pub-list');
+            if(list.length === 0) {
+                listDiv.innerHTML = "<div style='color:#666'>Brak publicznych gier...</div>";
+                return;
+            }
+            listDiv.innerHTML = "<b>AKTYWNE SERWERY:</b>";
+            list.forEach(room => {
+                listDiv.innerHTML += `
+                    <div class="server-item">
+                        <span>ID: ${room.id} (${room.count} graczy)</span>
+                        <button onclick="joinRoom('${room.id}')" style="width:60px; padding:2px; font-size:10px">WEJDŹ</button>
+                    </div>`;
+            });
+        });
 
         socket.on('room-created', (roomId) => {
             document.getElementById('room-code-val').innerText = roomId;
@@ -94,64 +118,73 @@
             lockers = []; collidables = []; hazards = []; physicalKeys = [];
             hasKey = false;
             camera.position.set(0, 1.6, 5);
-            document.getElementById('key-status').innerText = "KLUCZ: NIEODNALEZIONY";
+            document.getElementById('key-status').innerText = "KLUCZ: BRAK";
             document.getElementById('key-status').style.color = "#f00";
+            document.getElementById('lvl-txt').innerText = "POZIOM: " + level;
 
             scene.add(new THREE.AmbientLight(0xffffff, 0.05));
 
-            // Korytarz z zapadniami
-            const floorGeo = new THREE.PlaneGeometry(6, 60);
-            const floor = new THREE.Mesh(floorGeo, new THREE.MeshStandardMaterial({color: 0x111111}));
-            floor.rotation.x = -Math.PI/2; floor.position.set(0, 0, -25);
+            // Podłoga korytarza (dłuższa co poziom)
+            const corridorLength = 40 + (level * 10);
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(6, corridorLength), new THREE.MeshStandardMaterial({color: 0x111111}));
+            floor.rotation.x = -Math.PI/2; floor.position.set(0, 0, -corridorLength/2 + 5);
             scene.add(floor);
 
-            // PRZESZKODY: Lasery
-            for(let i=0; i<5; i++) {
-                const laser = new THREE.Mesh(new THREE.BoxGeometry(7, 0.1, 0.1), new THREE.MeshBasicMaterial({color: 0xff0000}));
-                laser.position.set(0, (i % 2 === 0 ? 0.5 : 1.3), -10 - (i * 8));
-                scene.add(laser);
-                hazards.push(laser);
-            }
+            // Generator losowych pokoi
+            const numRooms = 3 + Math.floor(level / 2);
+            const keyRoomIndex = Math.floor(Math.random() * numRooms);
 
-            // Pokoje boczne
-            for(let side of [-1, 1]) {
-                for(let zPos of [-15, -35]) {
-                    createWall(10, 5, 1, side * 8, 2.5, zPos - 5);
-                    createWall(10, 5, 1, side * 8, 2.5, zPos + 5);
-                    createWall(1, 5, 10, side * 13, 2.5, zPos);
-                    
-                    const light = new THREE.PointLight(0xffffff, 30, 15);
-                    light.position.set(side * 8, 4, zPos);
-                    scene.add(light);
+            for(let i=0; i<numRooms; i++) {
+                const zPos = -15 - (i * 15);
+                const side = Math.random() > 0.5 ? 1 : -1;
+                
+                // Pokój
+                createWall(10, 5, 1, side * 8, 2.5, zPos - 5);
+                createWall(10, 5, 1, side * 8, 2.5, zPos + 5);
+                createWall(1, 5, 10, side * 13, 2.5, zPos);
+                
+                const light = new THREE.PointLight(0xffffff, 40, 15);
+                light.position.set(side * 8, 4, zPos);
+                scene.add(light);
 
-                    // Szafki (w jednej zawsze będzie klucz)
-                    for(let i=0; i<2; i++) {
-                        const group = new THREE.Group();
-                        const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 1), new THREE.MeshStandardMaterial({color: 0x050505}));
-                        group.add(body);
-                        const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.3, 0.1), new THREE.MeshStandardMaterial({color: 0x444444}));
-                        door.position.set(0, 0, 0.51); 
-                        door.userData = { index: lockers.length, isKeyLocker: (lockers.length === 3) }; // 4 szafka zawsze ma klucz dla testu
-                        group.add(door);
-                        group.position.set(side * 8 + (Math.random()*4-2), 1.25, zPos + (Math.random()*4-2));
-                        scene.add(group);
-                        lockers.push(door);
-                        collidables.push(body);
-                    }
+                // Szafki w pokoju
+                for(let s=0; s<2; s++) {
+                    const group = new THREE.Group();
+                    const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 1), new THREE.MeshStandardMaterial({color: 0x050505}));
+                    group.add(body);
+                    const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.3, 0.1), new THREE.MeshStandardMaterial({color: 0x444}));
+                    door.position.set(0, 0, 0.51);
+                    door.userData = { index: lockers.length, isKeyLocker: (i === keyRoomIndex && s === 0) };
+                    group.add(door);
+                    group.position.set(side * 8 + (Math.random()*4-2), 1.25, zPos + (Math.random()*4-2));
+                    scene.add(group);
+                    lockers.push(door);
+                    collidables.push(body);
+                }
+
+                // PRZESZKODY (Lasery i piły)
+                if(i > 0) {
+                    const laser = new THREE.Mesh(new THREE.BoxGeometry(6, 0.1, 0.1), new THREE.MeshBasicMaterial({color: 0xff0000}));
+                    laser.position.set(0, Math.random() > 0.5 ? 0.5 : 1.4, zPos + 7);
+                    scene.add(laser);
+                    hazards.push(laser);
                 }
             }
 
             // Wyjście
-            const exit = new THREE.Mesh(new THREE.BoxGeometry(4, 5, 0.5), new THREE.MeshStandardMaterial({color: 0x00ff00, emissive: 0x00ff00}));
-            exit.position.set(0, 2.5, -55);
+            const exitPos = -corridorLength + 5;
+            const exit = new THREE.Mesh(new THREE.BoxGeometry(4, 5, 0.2), new THREE.MeshStandardMaterial({color: 0x00ff00, emissive: 0x00ff00}));
+            exit.position.set(0, 2.5, exitPos);
+            exit.userData = { isExit: true };
             scene.add(exit);
+            collidables.push(exit);
         }
 
         window.onkeydown = (e) => { 
             keys[e.code] = true; 
             if(e.code === 'Space' && isGrounded) { velocityY = 0.15; isGrounded = false; }
-            if(e.code === 'KeyC') isCrouching = true;
             if(e.code === 'KeyE') interact();
+            if(e.code === 'KeyC') isCrouching = true;
         };
         window.onkeyup = (e) => { 
             keys[e.code] = false; 
@@ -167,8 +200,7 @@
                 if(!door.userData.opened) {
                     door.rotation.y = Math.PI/1.5;
                     door.userData.opened = true;
-                    // SPAWN KLUCZA: jeśli to ta szafka, pokazujemy klucz
-                    if(door.userData.isKeyLocker || Math.random() < 0.2) {
+                    if(door.userData.isKeyLocker) {
                         const key = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshStandardMaterial({color: 0xffd700, emissive: 0xffaa00}));
                         key.position.copy(door.parent.position);
                         key.position.y = 1;
@@ -177,13 +209,12 @@
                     }
                 }
             }
-            // Podnoszenie klucza
             physicalKeys.forEach((k, i) => {
-                if(camera.position.distanceTo(k.position) < 2) {
+                if(camera.position.distanceTo(k.position) < 2.5) {
                     scene.remove(k);
                     physicalKeys.splice(i, 1);
                     hasKey = true;
-                    document.getElementById('key-status').innerText = "KLUCZ: OK!";
+                    document.getElementById('key-status').innerText = "KLUCZ: POSIADANY";
                     document.getElementById('key-status').style.color = "#0f0";
                 }
             });
@@ -192,40 +223,36 @@
         function animate() {
             requestAnimationFrame(animate);
             let targetHeight = isCrouching ? 0.8 : 1.6;
-            let speed = isCrouching ? 0.05 : 0.12;
-            
+            let speed = isCrouching ? 0.06 : 0.13;
+
             const move = new THREE.Vector3();
             if(keys['KeyW']) move.z -= speed; if(keys['KeyS']) move.z += speed;
             if(keys['KeyA']) move.x -= speed; if(keys['KeyD']) move.x += speed;
             move.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yaw));
 
-            // Grawitacja i Skok
             if(!isGrounded) {
                 velocityY -= 0.008;
                 camera.position.y += velocityY;
-                if(camera.position.y <= targetHeight) {
-                    camera.position.y = targetHeight;
-                    velocityY = 0;
-                    isGrounded = true;
-                }
+                if(camera.position.y <= targetHeight) { camera.position.y = targetHeight; velocityY = 0; isGrounded = true; }
             } else {
                 camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetHeight, 0.1);
             }
 
-            const nextPos = camera.position.clone().add(move);
-            camera.position.x = nextPos.x;
-            camera.position.z = nextPos.z;
+            camera.position.add(move);
 
-            // Kolizja z Hazardami (Lasery)
-            const pBox = new THREE.Box3().setFromCenterAndSize(camera.position, new THREE.Vector3(0.5, isCrouching ? 0.5 : 1.5, 0.5));
+            // Kolizja z Hazardami
+            const pBox = new THREE.Box3().setFromCenterAndSize(camera.position, new THREE.Vector3(0.5, 1, 0.5));
             hazards.forEach(h => {
-                if(pBox.intersectsBox(new THREE.Box3().setFromObject(h))) {
-                    camera.position.set(0, 1.6, 5); // Reset na start
-                }
+                if(pBox.intersectsBox(new THREE.Box3().setFromObject(h))) camera.position.set(0, 1.6, 5);
             });
 
+            // Wygrana i następny poziom
+            if(hasKey && camera.position.z < -(25 + level * 10)) {
+                level++;
+                generateLevel();
+            }
+
             camera.rotation.set(pitch, yaw, 0, 'YXZ');
-            if(hasKey && camera.position.z < -53) { alert("WYGRAŁEŚ!"); location.reload(); }
             renderer.render(scene, camera);
         }
     </script>
