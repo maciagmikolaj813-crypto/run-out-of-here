@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Run Out Of Here! - INDEV 2026 FIXED</title>
+    <title>Run Out Of Here! - INDEV 2026 ROOMS</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: 'Consolas', monospace; color: #fff; }
@@ -17,13 +17,13 @@
 </head>
 <body>
     <div id="crosshair"></div>
-    <div id="prompt">NACIŚNIJ [E]</div>
+    <div id="prompt">INTERAKCJA [E]</div>
     <div id="menu">
         <h1>Run Out Of Here! <small>Indev 2026</small></h1>
         <div class="box">
             <button onclick="createRoom(false)">NOWA GRA PUBLICZNA</button>
             <button onclick="createRoom(true)" style="background:#222;color:#fff;border:1px solid #fff">STWÓRZ POKÓJ PRYWATNY</button>
-            <div id="pub-list" style="max-height:100px; overflow-y:auto; margin:10px 0; font-size:12px; border-top: 1px solid #444; padding-top:10px;"></div>
+            <div id="pub-list" style="max-height:100px; overflow-y:auto; margin:10px 0; font-size:12px;"></div>
             <input type="text" id="join-id" placeholder="WPISZ KOD">
             <button onclick="joinRoom(document.getElementById('join-id').value)" style="background:#0055ff; color:white;">DOŁĄCZ</button>
         </div>
@@ -44,7 +44,7 @@
         let scene, camera, renderer, currentId, hasKey = false;
         let yaw = 0, pitch = 0, lockers = [], others = {}, collidables = [], physicalKeys = [];
         let level = 1;
-        const keys = {}; // Tu przechowujemy stan klawiszy
+        const keys = {};
 
         window.createRoom = (p) => socket.emit('create-room', p);
         window.joinRoom = (id) => socket.emit('join-room', id);
@@ -64,7 +64,7 @@
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x050505);
+            scene.background = new THREE.Color(0x020202);
             camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -94,67 +94,76 @@
             scene.clear();
             lockers = []; collidables = []; physicalKeys = [];
             hasKey = false;
-            camera.position.set(0, 1.6, 0);
+            camera.position.set(0, 1.6, 5);
             document.getElementById('key-status').innerText = "KLUCZ: NIEODNALEZIONY";
             document.getElementById('key-status').style.color = "#f00";
 
             scene.add(new THREE.AmbientLight(0xffffff, 0.1));
 
-            for(let r=0; r<3; r++) {
-                let zOffset = -r * 25;
-                const floor = new THREE.Mesh(new THREE.PlaneGeometry(22, 22), new THREE.MeshStandardMaterial({color: 0x111111}));
-                floor.rotation.x = -Math.PI/2; floor.position.set(0, 0, zOffset);
-                scene.add(floor);
-                
-                const ceiling = floor.clone(); ceiling.position.y = 5; ceiling.rotation.x = Math.PI/2;
-                scene.add(ceiling);
+            // Główny korytarz
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(6, 60), new THREE.MeshStandardMaterial({color: 0x111111}));
+            floor.rotation.x = -Math.PI/2; floor.position.set(0, 0, -25);
+            scene.add(floor);
+            
+            // Ściany korytarza z "dziurami" na drzwi do pokojów
+            createWall(1, 5, 20, -3.5, 2.5, -5); 
+            createWall(1, 5, 20, 3.5, 2.5, -5); 
+            createWall(1, 5, 20, -3.5, 2.5, -45); 
+            createWall(1, 5, 20, 3.5, 2.5, -45); 
 
-                const light = new THREE.PointLight(0xffffff, 60, 30);
-                light.position.set(0, 4.8, zOffset);
-                scene.add(light);
+            // Pokoje boczne (lewy i prawy)
+            for(let side of [-1, 1]) {
+                for(let zPos of [-15, -35]) {
+                    // Podłoga pokoju
+                    const pFloor = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), new THREE.MeshStandardMaterial({color: 0x151515}));
+                    pFloor.rotation.x = -Math.PI/2; pFloor.position.set(side * 8, 0, zPos);
+                    scene.add(pFloor);
+                    
+                    // Lampa w pokoju
+                    const light = new THREE.PointLight(0xffffff, 40, 15);
+                    light.position.set(side * 8, 4, zPos);
+                    scene.add(light);
 
-                createWall(22, 5, 1, 0, 2.5, zOffset - 11);
-                createWall(22, 5, 1, 0, 2.5, zOffset + 11);
-                createWall(1, 5, 22, -11, 2.5, zOffset);
-                createWall(1, 5, 22, 11, 2.5, zOffset);
+                    // Ściany pokoju
+                    createWall(10, 5, 1, side * 8, 2.5, zPos - 5);
+                    createWall(10, 5, 1, side * 8, 2.5, zPos + 5);
+                    createWall(1, 5, 10, side * 13, 2.5, zPos);
 
-                for(let i=0; i<5; i++) {
-                    const group = new THREE.Group();
-                    const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 1), new THREE.MeshStandardMaterial({color: 0x0a0a0a}));
-                    group.add(body);
-                    const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.3, 0.1), new THREE.MeshStandardMaterial({color: 0x333333}));
-                    door.position.set(0, 0, 0.51); door.userData = { index: r*5+i, opened: false };
-                    group.add(door);
-                    group.position.set(Math.random()*16-8, 1.25, zOffset + Math.random()*16-8);
-                    scene.add(group);
-                    lockers.push(door);
-                    collidables.push(body);
+                    // Szafki w pokoju
+                    for(let i=0; i<3; i++) {
+                        const group = new THREE.Group();
+                        const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.5, 0.8), new THREE.MeshStandardMaterial({color: 0x050505}));
+                        group.add(body);
+                        const door = new THREE.Mesh(new THREE.BoxGeometry(1, 2.3, 0.1), new THREE.MeshStandardMaterial({color: 0x333333}));
+                        door.position.set(0, 0, 0.41); door.userData = { index: lockers.length, opened: false };
+                        group.add(door);
+                        group.position.set(side * 8 + (Math.random()*6-3), 1.25, zPos + (Math.random()*6-3));
+                        scene.add(group);
+                        lockers.push(door);
+                        collidables.push(body);
+                    }
                 }
             }
 
-            const exit = new THREE.Mesh(new THREE.BoxGeometry(4, 5, 0.5), new THREE.MeshStandardMaterial({color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 0.5}));
-            exit.position.set(0, 2.5, -61);
+            // Wyjście na końcu korytarza
+            const exit = new THREE.Mesh(new THREE.BoxGeometry(4, 5, 0.2), new THREE.MeshStandardMaterial({color: 0x00ff00, emissive: 0x00ff00, emissiveIntensity: 1}));
+            exit.position.set(0, 2.5, -55);
             scene.add(exit);
         }
 
-        // OBSŁUGA KLAWIATURY
         window.onkeydown = (e) => { 
             keys[e.code] = true; 
             if(e.code === 'KeyE') interact();
         };
-        window.onkeyup = (e) => { 
-            keys[e.code] = false; // To naprawia "ślizganie się"
-        };
+        window.onkeyup = (e) => { keys[e.code] = false; };
 
         function interact() {
             const ray = new THREE.Raycaster();
             ray.setFromCamera(new THREE.Vector2(0,0), camera);
-            
             const hits = ray.intersectObjects(lockers);
-            if(hits.length > 0 && hits[0].distance < 3) {
+            if(hits.length > 0 && hits[0].distance < 3.5) {
                 socket.emit('locker-opened', { roomId: currentId, index: hits[0].object.userData.index });
             }
-            
             physicalKeys.forEach((k, i) => {
                 if(camera.position.distanceTo(k.position) < 2.5) {
                     scene.remove(k);
@@ -168,10 +177,11 @@
 
         socket.on('locker-state', (d) => {
             const door = lockers.find(l => l.userData.index === d.index);
-            if(door) { 
+            if(door && !door.userData.opened) { 
                 door.rotation.y = Math.PI/1.5; 
+                door.userData.opened = true;
                 if(d.hasKey) {
-                    const keyMesh = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshStandardMaterial({color: 0xffd700, emissive: 0xffaa00}));
+                    const keyMesh = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshStandardMaterial({color: 0xffd700, emissive: 0xffaa00}));
                     keyMesh.position.copy(door.parent.position);
                     keyMesh.position.y = 1.0;
                     scene.add(keyMesh);
@@ -190,28 +200,20 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            
             const move = new THREE.Vector3();
             const speed = 0.12;
-            
-            // Postać porusza się tylko gdy klawisz jest trzymany
             if(keys['KeyW']) move.z -= speed;
             if(keys['KeyS']) move.z += speed;
             if(keys['KeyA']) move.x -= speed;
             if(keys['KeyD']) move.x += speed;
 
             move.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yaw));
-            
-            const nextX = camera.position.clone().add(new THREE.Vector3(move.x, 0, 0));
-            if(!checkCollision(nextX)) camera.position.x = nextX.x;
-            
-            const nextZ = camera.position.clone().add(new THREE.Vector3(0, 0, move.z));
-            if(!checkCollision(nextZ)) camera.position.z = nextZ.z;
+            const nextPos = camera.position.clone().add(move);
+            if(!checkCollision(new THREE.Vector3(nextPos.x, 1.6, camera.position.z))) camera.position.x = nextPos.x;
+            if(!checkCollision(new THREE.Vector3(camera.position.x, 1.6, nextPos.z))) camera.position.z = nextPos.z;
 
             camera.rotation.set(pitch, yaw, 0, 'YXZ');
-            
-            if(hasKey && camera.position.z < -59) { socket.emit('win', currentId); hasKey = false; }
-
+            if(hasKey && camera.position.z < -53) { socket.emit('win', currentId); hasKey = false; }
             renderer.render(scene, camera);
             if(currentId) socket.emit('move', {roomId: currentId, pos: camera.position.toArray(), rot: yaw});
         }
