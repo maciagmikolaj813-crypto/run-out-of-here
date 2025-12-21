@@ -2,34 +2,36 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Run Out Of Here! - Apartment Edition</title>
+    <title>Run Out Of Here! - FULL V1.0</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; color: #fff; }
-        #menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #111; z-index: 100; }
-        .box { border: 2px solid #fff; padding: 20px; width: 350px; background: #000; text-align: center; }
-        #hud { position: fixed; top: 20px; left: 20px; z-index: 10; display: none; background: rgba(0,0,0,0.8); padding: 15px; border-left: 5px solid #00ff00; }
-        #crosshair { position: fixed; top: 50%; left: 50%; width: 6px; height: 6px; background: #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 5; display: none; }
-        button { background: #fff; color: #000; border: none; padding: 10px; font-weight: bold; cursor: pointer; width: 100%; margin: 5px 0; }
-        input { width: 100%; padding: 10px; margin: 5px 0; background: #222; color: #fff; border: 1px solid #444; box-sizing: border-box; }
-        #pub-list { max-height: 100px; overflow-y: auto; font-size: 12px; margin: 10px 0; border-top: 1px solid #333; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Consolas', monospace; color: #fff; }
+        #menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; z-index: 100; border: 5px solid #fff; margin: 10px; }
+        .box { border: 1px solid #fff; padding: 20px; width: 400px; background: #111; text-align: center; }
+        #hud { position: fixed; top: 20px; left: 20px; z-index: 10; display: none; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #fff; }
+        #prompt { position: fixed; bottom: 30%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #fff; display: none; text-shadow: 2px 2px #000; }
+        #crosshair { position: fixed; top: 50%; left: 50%; width: 6px; height: 6px; background: #fff; transform: translate(-50%, -50%); border-radius: 50%; z-index: 5; display: none; }
+        button { background: #fff; color: #000; border: none; padding: 12px; font-weight: bold; cursor: pointer; width: 100%; margin: 5px 0; }
+        input { width: 100%; padding: 10px; margin: 5px 0; background: #000; color: #fff; border: 1px solid #fff; box-sizing: border-box; }
     </style>
 </head>
 <body>
     <div id="crosshair"></div>
+    <div id="prompt">INTERAKCJA [E]</div>
     <div id="menu">
-        <h1>RUN OUT OF HERE!</h1>
+        <h1>Run Out Of Here! <small>V1.0 FULL</small></h1>
         <div class="box">
-            <button onclick="createRoom(false)">NOWY SERWER PUBLICZNY</button>
-            <div id="pub-list">Szukanie gier...</div>
-            <input type="text" id="join-id" placeholder="KOD PRYWATNY">
+            <button onclick="createRoom(false)">GRA PUBLICZNA</button>
+            <div id="pub-list" style="font-size:12px; margin:10px 0;">Szukanie gier...</div>
+            <input type="text" id="join-id" placeholder="KOD POKOJU">
             <button onclick="joinRoom(document.getElementById('join-id').value)">DOŁĄCZ</button>
         </div>
     </div>
     
     <div id="hud">
-        <div id="lvl-txt">MIESZKANIE: 1</div>
-        <div id="key-status" style="color:red">KLUCZ: BRAK</div>
+        <div id="lvl-txt" style="font-size:20px;">POZIOM: 1</div>
+        <div id="timer" style="color:#ffff00;">CZAS: 0s</div>
+        <div id="key-status" style="color:#ff0000; font-weight:bold;">KLUCZ: BRAK</div>
     </div>
 
     <script type="importmap"> { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } } </script>
@@ -39,15 +41,17 @@
         const socket = io("https://run-out-of-here.onrender.com"); 
 
         let scene, camera, renderer, currentId, hasKey = false;
-        let yaw = 0, pitch = 0, lockers = [], others = {}, collidables = [], physicalKeys = [];
-        let level = 1, keys = {};
+        let yaw = 0, pitch = 0, lockers = [], others = {}, collidables = [], hazards = [], physicalKeys = [];
+        let level = 1, startTime = Date.now();
+        let velocityY = 0, isGrounded = true, isCrouching = false;
+        const keys = {};
 
         window.createRoom = (p) => socket.emit('create-room', p);
         window.joinRoom = (id) => socket.emit('join-room', id);
 
         socket.on('list-update', (list) => {
             const div = document.getElementById('pub-list');
-            div.innerHTML = list.length ? "DOSTĘPNE GRY:<br>" : "Brak gier publicznych";
+            div.innerHTML = list.length ? "SERWERY:<br>" : "Brak serwerów";
             list.forEach(r => { div.innerHTML += `<button onclick="joinRoom('${r.id}')" style="font-size:10px; padding:2px;">${r.id} (${r.count}/4)</button>`; });
         });
 
@@ -59,12 +63,14 @@
             init();
         });
 
-        // WIZUALIZACJA INNYCH GRACZY (CZERWONA FASOLKA)
+        // WIZUALIZACJA FASOLEK (INNYCH GRACZY)
         socket.on('user-moved', (data) => {
+            if(data.id === currentId) return;
             if(!others[data.id]) {
-                const geo = new THREE.CapsuleGeometry(0.4, 1, 4, 8);
-                const mat = new THREE.MeshStandardMaterial({color: 0xff0000});
-                const mesh = new THREE.Mesh(geo, mat);
+                const mesh = new THREE.Mesh(
+                    new THREE.CapsuleGeometry(0.4, 1, 4, 8),
+                    new THREE.MeshStandardMaterial({color: 0xff0000})
+                );
                 scene.add(mesh);
                 others[data.id] = mesh;
             }
@@ -76,7 +82,7 @@
 
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x0a0a0a);
+            scene.background = new THREE.Color(0x050505);
             camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -95,118 +101,133 @@
             animate();
         }
 
-        function createWall(w, h, d, x, y, z, color = 0x555555) {
+        function createObj(w, h, d, x, y, z, color, isHazard = false) {
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({color: color}));
             mesh.position.set(x, y, z);
             scene.add(mesh);
-            collidables.push(mesh);
+            if(isHazard) hazards.push(mesh); else collidables.push(mesh);
             return mesh;
         }
 
         function generateLevel() {
             scene.clear();
-            lockers = []; collidables = []; physicalKeys = []; hasKey = false;
-            camera.position.set(0, 1.6, 0);
+            lockers = []; collidables = []; hazards = []; physicalKeys = []; others = {};
+            hasKey = false;
+            camera.position.set(0, 1.6, 5);
+            document.getElementById('key-status').innerText = "KLUCZ: BRAK";
+            document.getElementById('key-status').style.color = "red";
+
             scene.add(new THREE.AmbientLight(0xffffff, 0.1));
 
-            // GENEROWANIE "KAWALERKI"
-            // Podłoga i sufit
-            const floor = createWall(20, 0.1, 20, 0, 0, -5, 0x221100); // Drewniana podłoga
-            const ceil = createWall(20, 0.1, 20, 0, 4, -5, 0xeeeeee);
+            // Podłoga i ściany "Kawalerki"
+            createObj(15, 0.1, 30, 0, 0, -10, 0x222222); // Podłoga
+            createObj(15, 4, 0.5, 0, 2, 5, 0x444444);    // Tył
+            createObj(15, 4, 0.5, 0, 2, -25, 0x444444);  // Przód
+            createObj(0.5, 4, 30, -7.5, 2, -10, 0x444444); // Lewo
+            createObj(0.5, 4, 30, 7.5, 2, -10, 0x444444);  // Prawo
 
-            // Ściany zewnętrzne (Blokada pola)
-            createWall(20, 4, 0.5, 0, 2, 5);    // Tył
-            createWall(20, 4, 0.5, 0, 2, -15);  // Przód
-            createWall(0.5, 4, 20, -10, 2, -5); // Lewo
-            createWall(0.5, 4, 20, 10, 2, -5);  // Prawo
+            // PRZESZKODY: Lasery
+            for(let i=0; i<3; i++) {
+                const laser = createObj(14, 0.1, 0.1, 0, (i%2==0 ? 0.6 : 1.4), -5 - (i*6), 0xff0000, true);
+                laser.material = new THREE.MeshBasicMaterial({color: 0xff0000});
+            }
 
-            // Ściany wewnętrzne (Pokoje w kawalerce)
-            createWall(8, 4, 0.3, -6, 2, -5);   // Ściana działowa 1
-            createWall(0.3, 4, 8, 2, 2, -11);   // Ściana działowa 2
-
-            // Białe lampy sufitowe
-            const lampPositions = [[-5, 3.8, 0], [5, 3.8, -10], [0, 3.8, -5]];
-            lampPositions.forEach(p => {
-                const light = new THREE.PointLight(0xffffff, 30, 15);
-                light.position.set(p[0], p[1], p[2]);
-                scene.add(light);
-                const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshBasicMaterial({color: 0xffffff}));
-                bulb.position.set(p[0], p[1], p[2]);
-                scene.add(bulb);
-            });
-
-            // Szafki w pokojach
+            // Pokoje z szafkami
+            const keyLocker = Math.floor(Math.random() * 4);
             for(let i=0; i<4; i++) {
+                const xSide = i % 2 === 0 ? -4 : 4;
+                const zPos = -5 - (i * 4);
+                
                 const group = new THREE.Group();
-                const body = new THREE.Mesh(new THREE.BoxGeometry(1, 2.2, 0.8), new THREE.MeshStandardMaterial({color: 0x111111}));
+                const body = new THREE.Mesh(new THREE.BoxGeometry(1, 2.5, 1), new THREE.MeshStandardMaterial({color: 0x111111}));
                 group.add(body);
-                const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.1, 0.1), new THREE.MeshStandardMaterial({color: 0x444444}));
-                door.position.set(0, 0, 0.41);
-                door.userData = { index: i, opened: false, hasKey: (i === Math.floor(Math.random()*4)) };
+                const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.3, 0.1), new THREE.MeshStandardMaterial({color: 0x555555}));
+                door.position.set(0, 0, 0.51);
+                door.userData = { hasKey: (i === keyLocker), opened: false };
                 group.add(door);
-                group.position.set(Math.random()*16-8, 1.1, Math.random()*-12);
+                group.position.set(xSide, 1.25, zPos);
                 scene.add(group);
                 lockers.push(door);
                 collidables.push(body);
+
+                const lp = new THREE.PointLight(0xffffff, 20, 10);
+                lp.position.set(xSide, 3.5, zPos);
+                scene.add(lp);
             }
 
-            // Wyjście (Drzwi frontowe)
-            const exit = createWall(2, 3, 0.2, 0, 1.5, -14.8, 0x00ff00);
-            exit.userData = { isExit: true };
+            // Wyjście
+            const exit = createObj(3, 4, 0.2, 0, 2, -24.8, 0x00ff00);
+            exit.material.emissive = new THREE.Color(0x00ff00);
         }
 
-        window.onkeydown = (e) => { 
-            keys[e.code] = true; 
-            if(e.code === 'KeyE') {
-                const ray = new THREE.Raycaster();
-                ray.setFromCamera(new THREE.Vector2(0,0), camera);
-                const hits = ray.intersectObjects(lockers);
-                if(hits.length > 0 && hits[0].distance < 3) {
-                    const d = hits[0].object;
-                    if(!d.userData.opened) {
-                        d.rotation.y = Math.PI/1.5; d.userData.opened = true;
-                        if(d.userData.hasKey) {
-                            const k = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshStandardMaterial({color: 0xffd700, emissive: 0xffaa00}));
-                            k.position.copy(d.parent.position); k.position.y = 1;
-                            scene.add(k); physicalKeys.push(k);
-                        }
+        window.onkeydown = (e) => {
+            keys[e.code] = true;
+            if(e.code === 'Space' && isGrounded) { velocityY = 0.15; isGrounded = false; }
+            if(e.code === 'KeyC') isCrouching = true;
+            if(e.code === 'KeyE') interact();
+        };
+        window.onkeyup = (e) => {
+            keys[e.code] = false;
+            if(e.code === 'KeyC') isCrouching = false;
+        };
+
+        function interact() {
+            const ray = new THREE.Raycaster();
+            ray.setFromCamera(new THREE.Vector2(0,0), camera);
+            const hits = ray.intersectObjects(lockers);
+            if(hits.length > 0 && hits[0].distance < 3) {
+                const d = hits[0].object;
+                if(!d.userData.opened) {
+                    d.rotation.y = Math.PI/1.5; d.userData.opened = true;
+                    if(d.userData.hasKey) {
+                        const k = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshStandardMaterial({color: 0xffd700, emissive: 0xffaa00}));
+                        k.position.copy(d.parent.position); k.position.y = 1;
+                        scene.add(k); physicalKeys.push(k);
                     }
                 }
-                physicalKeys.forEach((k, i) => {
-                    if(camera.position.distanceTo(k.position) < 2) {
-                        scene.remove(k); physicalKeys.splice(i, 1);
-                        hasKey = true;
-                        document.getElementById('key-status').innerText = "KLUCZ: TAK";
-                        document.getElementById('key-status').style.color = "#0f0";
-                    }
-                });
             }
-        };
-        window.onkeyup = (e) => { keys[e.code] = false; };
-
-        function checkCollision(pos) {
-            const pBox = new THREE.Box3().setFromCenterAndSize(pos, new THREE.Vector3(0.6, 1.8, 0.6));
-            for(let obj of collidables) {
-                if(pBox.intersectsBox(new THREE.Box3().setFromObject(obj))) return true;
-            }
-            return false;
+            physicalKeys.forEach((k, i) => {
+                if(camera.position.distanceTo(k.position) < 2) {
+                    scene.remove(k); physicalKeys.splice(i, 1);
+                    hasKey = true;
+                    document.getElementById('key-status').innerText = "KLUCZ: TAK";
+                    document.getElementById('key-status').style.color = "#0f0";
+                }
+            });
         }
 
         function animate() {
             requestAnimationFrame(animate);
+            document.getElementById('timer').innerText = "CZAS: " + Math.floor((Date.now() - startTime)/1000) + "s";
+
+            let targetH = isCrouching ? 0.8 : 1.6;
+            let speed = isCrouching ? 0.05 : 0.12;
             const move = new THREE.Vector3();
-            const speed = 0.12;
             if(keys['KeyW']) move.z -= speed; if(keys['KeyS']) move.z += speed;
             if(keys['KeyA']) move.x -= speed; if(keys['KeyD']) move.x += speed;
             move.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yaw));
 
-            const nextX = camera.position.clone().add(new THREE.Vector3(move.x, 0, 0));
-            if(!checkCollision(nextX)) camera.position.x = nextX.x;
-            const nextZ = camera.position.clone().add(new THREE.Vector3(0, 0, move.z));
-            if(!checkCollision(nextZ)) camera.position.z = nextZ.z;
+            if(!isGrounded) {
+                velocityY -= 0.008; camera.position.y += velocityY;
+                if(camera.position.y <= targetH) { camera.position.y = targetH; velocityY = 0; isGrounded = true; }
+            } else { camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetH, 0.1); }
+
+            const nX = camera.position.clone().add(new THREE.Vector3(move.x, 0, 0));
+            const nZ = camera.position.clone().add(new THREE.Vector3(0, 0, move.z));
+            const check = (p) => {
+                const box = new THREE.Box3().setFromCenterAndSize(p, new THREE.Vector3(0.6, 1.5, 0.6));
+                return collidables.some(c => box.intersectsBox(new THREE.Box3().setFromObject(c)));
+            };
+            if(!check(nX)) camera.position.x = nX.x;
+            if(!check(nZ)) camera.position.z = nZ.z;
+
+            // Hazard Check (Lasery)
+            const pBox = new THREE.Box3().setFromCenterAndSize(camera.position, new THREE.Vector3(0.4, isCrouching?0.5:1.5, 0.4));
+            hazards.forEach(h => { if(pBox.intersectsBox(new THREE.Box3().setFromObject(h))) camera.position.set(0, 1.6, 5); });
+
+            if(hasKey && camera.position.z < -24) { level++; generateLevel(); }
 
             camera.rotation.set(pitch, yaw, 0, 'YXZ');
-            if(hasKey && camera.position.z < -14) { level++; generateLevel(); }
             renderer.render(scene, camera);
             if(currentId) socket.emit('move', {roomId: currentId, pos: camera.position.toArray(), rot: yaw});
         }
