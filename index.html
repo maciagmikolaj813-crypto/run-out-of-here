@@ -2,41 +2,34 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Run Out Of Here! - FULL RELEASE</title>
+    <title>Run Out Of Here! - Apartment Edition</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, sans-serif; color: #fff; }
-        #menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle, #222 0%, #000 100%); z-index: 100; border: 10px solid #444; }
-        .box { border: 2px solid #fff; padding: 30px; width: 400px; background: rgba(0,0,0,0.9); text-align: center; box-shadow: 0 0 20px rgba(255,255,255,0.1); }
-        #hud { position: fixed; top: 20px; left: 20px; z-index: 10; display: none; background: rgba(0,0,0,0.85); padding: 20px; border-left: 5px solid #fff; min-width: 150px; }
-        #prompt { position: fixed; bottom: 25%; left: 50%; transform: translateX(-50%); font-size: 28px; color: #fff; display: none; text-shadow: 0 0 10px #000; font-weight: bold; }
-        #crosshair { position: fixed; top: 50%; left: 50%; width: 8px; height: 8px; background: #fff; transform: translate(-50%, -50%); border-radius: 50%; z-index: 5; display: none; border: 1px solid #000; }
-        button { background: #fff; color: #000; border: none; padding: 12px; font-weight: bold; cursor: pointer; width: 100%; margin: 8px 0; text-transform: uppercase; letter-spacing: 1px; }
-        button:hover { background: #ddd; transform: scale(1.02); }
-        #pub-list { max-height: 150px; overflow-y: auto; margin: 15px 0; background: #111; padding: 10px; border: 1px solid #333; text-align: left; font-size: 13px; }
-        .room-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #222; padding-bottom: 5px; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; color: #fff; }
+        #menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #111; z-index: 100; }
+        .box { border: 2px solid #fff; padding: 20px; width: 350px; background: #000; text-align: center; }
+        #hud { position: fixed; top: 20px; left: 20px; z-index: 10; display: none; background: rgba(0,0,0,0.8); padding: 15px; border-left: 5px solid #00ff00; }
+        #crosshair { position: fixed; top: 50%; left: 50%; width: 6px; height: 6px; background: #fff; border-radius: 50%; transform: translate(-50%, -50%); z-index: 5; display: none; }
+        button { background: #fff; color: #000; border: none; padding: 10px; font-weight: bold; cursor: pointer; width: 100%; margin: 5px 0; }
+        input { width: 100%; padding: 10px; margin: 5px 0; background: #222; color: #fff; border: 1px solid #444; box-sizing: border-box; }
+        #pub-list { max-height: 100px; overflow-y: auto; font-size: 12px; margin: 10px 0; border-top: 1px solid #333; }
     </style>
 </head>
 <body>
     <div id="crosshair"></div>
-    <div id="prompt">INTERAKCJA [E]</div>
-    
     <div id="menu">
-        <h1 style="font-size: 48px; margin-bottom: 10px;">RUN OUT OF HERE!</h1>
-        <p style="color: #888; margin-bottom: 30px;">PRZEŻYJ. ZNAJDŹ KLUCZ. UCIEKAJ.</p>
+        <h1>RUN OUT OF HERE!</h1>
         <div class="box">
-            <button onclick="createRoom(false)">STWÓRZ POKÓJ PUBLICZNY</button>
-            <button onclick="createRoom(true)" style="background:#222; color:#fff; border:1px solid #fff;">POKÓJ PRYWATNY</button>
-            <div id="pub-list">Szukanie aktywnych gier...</div>
-            <input type="text" id="join-id" placeholder="KOD POKOJU" style="width:100%; padding:10px; background:#000; color:#fff; border:1px solid #444; box-sizing:border-box;">
-            <button onclick="joinRoom(document.getElementById('join-id').value)" style="background:#0055ff; color:#fff;">DOŁĄCZ</button>
+            <button onclick="createRoom(false)">NOWY SERWER PUBLICZNY</button>
+            <div id="pub-list">Szukanie gier...</div>
+            <input type="text" id="join-id" placeholder="KOD PRYWATNY">
+            <button onclick="joinRoom(document.getElementById('join-id').value)">DOŁĄCZ</button>
         </div>
     </div>
     
     <div id="hud">
-        <div id="lvl-txt" style="font-size:24px; font-weight:bold;">POZIOM: 1</div>
-        <div id="key-status" style="color:#ff4444;">KLUCZ: NIEODNALEZIONY</div>
-        <div id="room-id-display" style="color:#666; font-size:12px; margin-top:10px; display:none; border-top:1px solid #333; padding-top:5px;">SESJA: <span id="room-code-val"></span></div>
+        <div id="lvl-txt">MIESZKANIE: 1</div>
+        <div id="key-status" style="color:red">KLUCZ: BRAK</div>
     </div>
 
     <script type="importmap"> { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } } </script>
@@ -46,25 +39,16 @@
         const socket = io("https://run-out-of-here.onrender.com"); 
 
         let scene, camera, renderer, currentId, hasKey = false;
-        let yaw = 0, pitch = 0, lockers = [], others = {}, collidables = [], hazards = [], physicalKeys = [];
-        let level = 1, velocityY = 0, isGrounded = true, isCrouching = false;
-        const keys = {};
+        let yaw = 0, pitch = 0, lockers = [], others = {}, collidables = [], physicalKeys = [];
+        let level = 1, keys = {};
 
         window.createRoom = (p) => socket.emit('create-room', p);
         window.joinRoom = (id) => socket.emit('join-room', id);
 
         socket.on('list-update', (list) => {
             const div = document.getElementById('pub-list');
-            if(list.length === 0) { div.innerHTML = "<span style='color:#555'>Brak dostępnych pokoi...</span>"; return; }
-            div.innerHTML = "<b>AKTYWNE GRY:</b><br>";
-            list.forEach(r => {
-                div.innerHTML += `<div class="room-row"><span>ID: ${r.id} (${r.count}/4)</span> <button onclick="joinRoom('${r.id}')" style="width:auto; padding:2px 10px; margin:0;">WEJDŹ</button></div>`;
-            });
-        });
-
-        socket.on('room-created', (roomId) => {
-            document.getElementById('room-code-val').innerText = roomId;
-            document.getElementById('room-id-display').style.display = 'block';
+            div.innerHTML = list.length ? "DOSTĘPNE GRY:<br>" : "Brak gier publicznych";
+            list.forEach(r => { div.innerHTML += `<button onclick="joinRoom('${r.id}')" style="font-size:10px; padding:2px;">${r.id} (${r.count}/4)</button>`; });
         });
 
         socket.on('joined', (data) => {
@@ -75,9 +59,24 @@
             init();
         });
 
+        // WIZUALIZACJA INNYCH GRACZY (CZERWONA FASOLKA)
+        socket.on('user-moved', (data) => {
+            if(!others[data.id]) {
+                const geo = new THREE.CapsuleGeometry(0.4, 1, 4, 8);
+                const mat = new THREE.MeshStandardMaterial({color: 0xff0000});
+                const mesh = new THREE.Mesh(geo, mat);
+                scene.add(mesh);
+                others[data.id] = mesh;
+            }
+            others[data.id].position.fromArray(data.pos);
+            others[data.id].rotation.y = data.rot;
+        });
+
+        socket.on('user-disconnected', (id) => { if(others[id]) { scene.remove(others[id]); delete others[id]; } });
+
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x050505);
+            scene.background = new THREE.Color(0x0a0a0a);
             camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -96,119 +95,97 @@
             animate();
         }
 
-        function createBox(w, h, d, x, y, z, color = 0x222222, isWall = true) {
+        function createWall(w, h, d, x, y, z, color = 0x555555) {
             const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({color: color}));
             mesh.position.set(x, y, z);
             scene.add(mesh);
-            if(isWall) collidables.push(mesh);
+            collidables.push(mesh);
             return mesh;
         }
 
         function generateLevel() {
             scene.clear();
-            lockers = []; collidables = []; hazards = []; physicalKeys = [];
-            hasKey = false;
-            camera.position.set(0, 1.6, 5);
-            document.getElementById('key-status').innerText = "KLUCZ: NIEODNALEZIONY";
-            document.getElementById('key-status').style.color = "#ff4444";
-            document.getElementById('lvl-txt').innerText = "POZIOM: " + level;
-
+            lockers = []; collidables = []; physicalKeys = []; hasKey = false;
+            camera.position.set(0, 1.6, 0);
             scene.add(new THREE.AmbientLight(0xffffff, 0.1));
 
-            // Główny korytarz
-            const corridorLength = 50 + (level * 10);
-            createBox(8, 0.2, corridorLength, 0, 0, -corridorLength/2 + 5, 0x111111, false); // Podłoga
-            createBox(8, 0.2, corridorLength, 0, 5, -corridorLength/2 + 5, 0x111111, false); // Sufit
+            // GENEROWANIE "KAWALERKI"
+            // Podłoga i sufit
+            const floor = createWall(20, 0.1, 20, 0, 0, -5, 0x221100); // Drewniana podłoga
+            const ceil = createWall(20, 0.1, 20, 0, 4, -5, 0xeeeeee);
 
-            // Losowe Pokoje i Przeszkody
-            const numRooms = 2 + level;
-            const keyLockerIndex = Math.floor(Math.random() * (numRooms * 2));
+            // Ściany zewnętrzne (Blokada pola)
+            createWall(20, 4, 0.5, 0, 2, 5);    // Tył
+            createWall(20, 4, 0.5, 0, 2, -15);  // Przód
+            createWall(0.5, 4, 20, -10, 2, -5); // Lewo
+            createWall(0.5, 4, 20, 10, 2, -5);  // Prawo
 
-            for(let i=0; i < numRooms; i++) {
-                const zPos = -15 - (i * 15);
-                const side = (i % 2 === 0) ? 1 : -1;
+            // Ściany wewnętrzne (Pokoje w kawalerce)
+            createWall(8, 4, 0.3, -6, 2, -5);   // Ściana działowa 1
+            createWall(0.3, 4, 8, 2, 2, -11);   // Ściana działowa 2
 
-                // Pokój boczny
-                createBox(1, 5, 10, side * 4, 2.5, zPos); // Ściana wejściowa
-                createBox(10, 5, 1, side * 9, 2.5, zPos - 5); // Boczne ściany
-                createBox(10, 5, 1, side * 9, 2.5, zPos + 5);
-                createBox(1, 5, 10, side * 14, 2.5, zPos); // Tył
-                
-                const light = new THREE.PointLight(0xffffff, 50, 20);
-                light.position.set(side * 9, 4, zPos);
+            // Białe lampy sufitowe
+            const lampPositions = [[-5, 3.8, 0], [5, 3.8, -10], [0, 3.8, -5]];
+            lampPositions.forEach(p => {
+                const light = new THREE.PointLight(0xffffff, 30, 15);
+                light.position.set(p[0], p[1], p[2]);
                 scene.add(light);
+                const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                bulb.position.set(p[0], p[1], p[2]);
+                scene.add(bulb);
+            });
 
-                // Szafki
-                for(let s=0; s<2; s++) {
-                    const lIdx = (i * 2) + s;
-                    const group = new THREE.Group();
-                    const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 1), new THREE.MeshStandardMaterial({color: 0x0a0a0a}));
-                    group.add(body);
-                    const door = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.3, 0.1), new THREE.MeshStandardMaterial({color: 0x333333}));
-                    door.position.set(0,0,0.51);
-                    door.userData = { index: lIdx, opened: false, hasKey: (lIdx === keyLockerIndex) };
-                    group.add(door);
-                    group.position.set(side * 9 + (s*2-1), 1.25, zPos + (Math.random()*4-2));
-                    scene.add(group);
-                    lockers.push(door);
-                    collidables.push(body);
-                }
-
-                // Przeszkody na korytarzu (Lasery)
-                if(i > 0) {
-                    const laser = createBox(8, 0.1, 0.1, 0, (Math.random() > 0.5 ? 0.6 : 1.4), zPos + 7, 0xff0000, false);
-                    laser.material = new THREE.MeshBasicMaterial({color: 0xff0000});
-                    hazards.push(laser);
-                }
+            // Szafki w pokojach
+            for(let i=0; i<4; i++) {
+                const group = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.BoxGeometry(1, 2.2, 0.8), new THREE.MeshStandardMaterial({color: 0x111111}));
+                group.add(body);
+                const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 2.1, 0.1), new THREE.MeshStandardMaterial({color: 0x444444}));
+                door.position.set(0, 0, 0.41);
+                door.userData = { index: i, opened: false, hasKey: (i === Math.floor(Math.random()*4)) };
+                group.add(door);
+                group.position.set(Math.random()*16-8, 1.1, Math.random()*-12);
+                scene.add(group);
+                lockers.push(door);
+                collidables.push(body);
             }
 
-            // Wyjście
-            const exit = createBox(4, 5, 0.2, 0, 2.5, -corridorLength + 5, 0x00ff00, false);
-            exit.material.emissive = new THREE.Color(0x00ff00);
-            exit.material.emissiveIntensity = 2;
+            // Wyjście (Drzwi frontowe)
+            const exit = createWall(2, 3, 0.2, 0, 1.5, -14.8, 0x00ff00);
+            exit.userData = { isExit: true };
         }
 
-        window.onkeydown = (e) => {
-            keys[e.code] = true;
-            if(e.code === 'Space' && isGrounded) { velocityY = 0.15; isGrounded = false; }
-            if(e.code === 'KeyE') interact();
-            if(e.code === 'KeyC') isCrouching = true;
-        };
-        window.onkeyup = (e) => {
-            keys[e.code] = false;
-            if(e.code === 'KeyC') isCrouching = false;
-        };
-
-        function interact() {
-            const ray = new THREE.Raycaster();
-            ray.setFromCamera(new THREE.Vector2(0,0), camera);
-            const hits = ray.intersectObjects(lockers);
-            if(hits.length > 0 && hits[0].distance < 4) {
-                const door = hits[0].object;
-                if(!door.userData.opened) {
-                    door.rotation.y = Math.PI/1.5;
-                    door.userData.opened = true;
-                    if(door.userData.hasKey) {
-                        const kMesh = new THREE.Mesh(new THREE.SphereGeometry(0.2), new THREE.MeshStandardMaterial({color: 0xffd700, emissive: 0xffaa00}));
-                        kMesh.position.copy(door.parent.position); kMesh.position.y = 1;
-                        scene.add(kMesh);
-                        physicalKeys.push(kMesh);
+        window.onkeydown = (e) => { 
+            keys[e.code] = true; 
+            if(e.code === 'KeyE') {
+                const ray = new THREE.Raycaster();
+                ray.setFromCamera(new THREE.Vector2(0,0), camera);
+                const hits = ray.intersectObjects(lockers);
+                if(hits.length > 0 && hits[0].distance < 3) {
+                    const d = hits[0].object;
+                    if(!d.userData.opened) {
+                        d.rotation.y = Math.PI/1.5; d.userData.opened = true;
+                        if(d.userData.hasKey) {
+                            const k = new THREE.Mesh(new THREE.SphereGeometry(0.15), new THREE.MeshStandardMaterial({color: 0xffd700, emissive: 0xffaa00}));
+                            k.position.copy(d.parent.position); k.position.y = 1;
+                            scene.add(k); physicalKeys.push(k);
+                        }
                     }
                 }
+                physicalKeys.forEach((k, i) => {
+                    if(camera.position.distanceTo(k.position) < 2) {
+                        scene.remove(k); physicalKeys.splice(i, 1);
+                        hasKey = true;
+                        document.getElementById('key-status').innerText = "KLUCZ: TAK";
+                        document.getElementById('key-status').style.color = "#0f0";
+                    }
+                });
             }
-            physicalKeys.forEach((k, i) => {
-                if(camera.position.distanceTo(k.position) < 2.5) {
-                    scene.remove(k);
-                    physicalKeys.splice(i, 1);
-                    hasKey = true;
-                    document.getElementById('key-status').innerText = "KLUCZ: POSIADANY";
-                    document.getElementById('key-status').style.color = "#44ff44";
-                }
-            });
-        }
+        };
+        window.onkeyup = (e) => { keys[e.code] = false; };
 
         function checkCollision(pos) {
-            const pBox = new THREE.Box3().setFromCenterAndSize(pos, new THREE.Vector3(0.8, 1.8, 0.8));
+            const pBox = new THREE.Box3().setFromCenterAndSize(pos, new THREE.Vector3(0.6, 1.8, 0.6));
             for(let obj of collidables) {
                 if(pBox.intersectsBox(new THREE.Box3().setFromObject(obj))) return true;
             }
@@ -217,37 +194,21 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            let targetHeight = isCrouching ? 0.8 : 1.6;
-            let speed = isCrouching ? 0.05 : 0.13;
             const move = new THREE.Vector3();
+            const speed = 0.12;
             if(keys['KeyW']) move.z -= speed; if(keys['KeyS']) move.z += speed;
             if(keys['KeyA']) move.x -= speed; if(keys['KeyD']) move.x += speed;
             move.applyQuaternion(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yaw));
 
-            if(!isGrounded) {
-                velocityY -= 0.008;
-                camera.position.y += velocityY;
-                if(camera.position.y <= targetHeight) { camera.position.y = targetHeight; velocityY = 0; isGrounded = true; }
-            } else {
-                camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetHeight, 0.15);
-            }
-
-            const nextPos = camera.position.clone().add(move);
-            if(!checkCollision(new THREE.Vector3(nextPos.x, camera.position.y, camera.position.z))) camera.position.x = nextPos.x;
-            if(!checkCollision(new THREE.Vector3(camera.position.x, camera.position.y, nextPos.z))) camera.position.z = nextPos.z;
-
-            // Hazard Check
-            const pBox = new THREE.Box3().setFromCenterAndSize(camera.position, new THREE.Vector3(0.4, isCrouching ? 0.4 : 1.2, 0.4));
-            hazards.forEach(h => { if(pBox.intersectsBox(new THREE.Box3().setFromObject(h))) camera.position.set(0, 1.6, 5); });
-
-            // Next Level Check
-            if(hasKey && camera.position.z < -(40 + level * 10)) {
-                level++;
-                generateLevel();
-            }
+            const nextX = camera.position.clone().add(new THREE.Vector3(move.x, 0, 0));
+            if(!checkCollision(nextX)) camera.position.x = nextX.x;
+            const nextZ = camera.position.clone().add(new THREE.Vector3(0, 0, move.z));
+            if(!checkCollision(nextZ)) camera.position.z = nextZ.z;
 
             camera.rotation.set(pitch, yaw, 0, 'YXZ');
+            if(hasKey && camera.position.z < -14) { level++; generateLevel(); }
             renderer.render(scene, camera);
+            if(currentId) socket.emit('move', {roomId: currentId, pos: camera.position.toArray(), rot: yaw});
         }
     </script>
 </body>
